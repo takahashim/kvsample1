@@ -3,38 +3,59 @@
 import { Handlers, PageProps } from "$fresh/server.ts";
 
 interface Data {
-  comments: string[];
+  articles: Article[];
 }
 
-const setComment = async (title: string, content: string) => {
-  const kv = await Deno.openKv();
-  await kv.set(["comments", title], content);
-}
+type EpochTime = number;
 
-const getComments = async () => {
+type Article = {
+  timestamp: EpochTime;
+  title: string;
+  content: string;
+};
+
+const setArticle = async (article: Article) => {
   const kv = await Deno.openKv();
-  const iter = await kv.list<string>({prefix: ["comments"]});
+  await kv.set(["articles", article.timestamp], article);
+};
+
+const getArticles = async () => {
+  const kv = await Deno.openKv();
+  const iter = await kv.list<Article>({ prefix: ["articles"] });
   const comments = [];
   for await (const entry of iter) {
-    comments.push(`${entry.key}: ${entry.value}`); 
+    comments.push(entry.value);
   }
-  return comments;
-}
+  return comments.reverse();
+};
 
 export const handler: Handlers<Data> = {
   async GET(req, ctx) {
     const url = new URL(req.url);
     const title = url.searchParams.get("title") || "-";
     const content = url.searchParams.get("content") || "---";
-    await setComment(title, content);
-    const comments = await getComments();
+    const timestamp = Date.now();
+    const article = { timestamp, title, content };
+    await setArticle(article);
+    const articles = await getArticles();
 
-    return ctx.render({ comments });
-  }
+    return ctx.render({ articles });
+  },
+};
+
+const Article = ({ article }: { article: Article }) => {
+  return (
+    <li>
+      <span>{(new Date(article.timestamp)).toLocaleString()}</span>: 「<span>
+        {article.title}
+      </span>」
+      <span>{article.content}</span>
+    </li>
+  );
 };
 
 export default function Home({ data }: PageProps<Data>) {
-  const { comments } = data;
+  const { articles } = data;
 
   return (
     <div class="px-4 py-8 mx-auto bg-[#86efac]">
@@ -54,12 +75,16 @@ export default function Home({ data }: PageProps<Data>) {
       </div>
       <div>
         <form>
-          <label>title: <input type="text" name="title"  /></label>
-          <label>content:<input type="text" name="content"  /></label>
+          <label>
+            title: <input type="text" name="title" />
+          </label>
+          <label>
+            content:<input type="text" name="content" />
+          </label>
           <button type="submit">Submit</button>
         </form>
         <ul>
-          {comments.map((comment) => <li>{comment}</li>)}
+          {articles.map((article) => <Article article={article} />)}
         </ul>
       </div>
     </div>
